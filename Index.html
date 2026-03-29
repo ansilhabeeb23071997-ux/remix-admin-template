@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Deal Opening</title>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<style>
+body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+h1 { background:#25D366; color:white; padding:15px; text-align:center; border-radius:6px; }
+.container { background:white; padding:20px; border-radius:10px; max-width:700px; margin:auto; box-shadow:0 0 15px rgba(0,0,0,0.1); }
+
+input, select { width:100%; padding:10px; margin:6px 0; border-radius:5px; border:1px solid #ccc; font-size:14px; box-sizing:border-box; }
+textarea { width:100%; height:220px; margin-top:10px; padding:10px; border-radius:6px; border:1px solid #ccc; resize:none; }
+
+button { padding:12px; font-size:16px; border:none; border-radius:6px; cursor:pointer; }
+button:hover { opacity:0.9; }
+.addbtn { background:#007BFF; color:white; }
+button.edit { background:orange; color:white; }
+button.delete { background:red; color:white; }
+.managebtn, .nothingfreebtn, .toggleaddbtn { width:45px; height:42px; font-size:18px; padding:0; margin-left:auto; border-radius:6px; cursor:pointer; background:#25D366; color:white; }
+
+.dealrow { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.column { display:flex; gap:10px; margin-top:10px; }
+.column input { flex:1; }
+
+#dealManager, #addNewFreeItemColumn { display:none; margin-top:10px; padding:10px; background:#eef5ff; border-radius:6px; }
+#dealTypeList, #selectedFreeItemsContainer { margin-top:10px; padding:10px; background:#f0f0f0; border-radius:5px; }
+#dealTypeList ul, #selectedFreeItemsContainer ul { list-style-type: disc; padding-left:20px; margin:0; }
+#dealTypeList li, #selectedFreeItemsContainer li { margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; }
+
+.section { background:#f9f9f9; padding:10px; border-radius:6px; margin-bottom:10px; }
+.section strong { display:block; margin-bottom:6px; }
+
+.blink { color:red; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity:0; } }
+</style>
+</head>
+<body>
+
+<h1>Deal Opening</h1>
+<div class="container">
+
+<!-- DEAL TYPE -->
+<div class="dealrow">
+  <select id="dealtype"></select>
+  <button class="addbtn managebtn" onclick="toggleDealManager()">⚙</button>
+</div>
+<div id="dealManager">
+  <div id="dealTypeList"></div>
+  <div id="addDealTypeContainer"></div>
+</div>
+
+<!-- CUSTOMER DETAILS -->
+<div class="section">
+  <strong>Customer Details</strong>
+  <input id="customer" placeholder="Customer Name">
+  <input id="phone" placeholder="Phone Number">
+  <input id="dob" placeholder="Date of Birth">
+  <input id="location" placeholder="Location">
+</div>
+
+<!-- CAR DETAILS -->
+<div class="section">
+  <strong>Car Details</strong>
+  <input id="car" placeholder="Car Model">
+  <input id="color" placeholder="Color">
+  <input id="vin" placeholder="VIN Number">
+</div>
+
+<!-- DEAL PRICES -->
+<div class="section">
+  <strong>Deal Prices</strong>
+  <input id="pubprice" placeholder="Published Price">
+  <input id="soldprice" placeholder="Sold Price">
+</div>
+
+<!-- FREE ITEMS -->
+<div class="section">
+  <strong>Free Items</strong>
+  <div class="dealrow">
+    <select id="freeitemdropdown"></select>
+    <button class="addbtn" onclick="addSelectedFreeItem()">Add</button>
+    <button class="nothingfreebtn" onclick="toggleFreeActions()">⚙</button>
+    <button class="toggleaddbtn" onclick="toggleAddNewFreeItem()">➕</button>
+  </div>
+
+  <div id="addNewFreeItemColumn" class="column">
+    <input id="newfreeitem" placeholder="Add New Free Item">
+    <button class="addbtn" onclick="addFreeItem()">Add</button>
+  </div>
+
+  <div id="selectedFreeItemsContainer">
+    <strong>Selected Free Items:</strong>
+    <ul id="selectedFreeItems"></ul>
+  </div>
+
+  <input id="customfreeitems" placeholder="Custom Free Items">
+</div>
+
+<!-- WARRANTY & SERVICE -->
+<div class="section">
+  <strong>Warranty & Service</strong>
+  <input id="warranty" placeholder="Warranty">
+  <input id="service" placeholder="Service">
+</div>
+
+<!-- DEAL INFO -->
+<div class="section">
+  <strong>Deal Info</strong>
+  <input id="lead" placeholder="Lead Source">
+  <input id="dealno" placeholder="Deal Number">
+  <input id="source" placeholder="Source">
+  <input id="salesman" placeholder="Salesman Name">
+  <input id="additional" placeholder="Additional Details">
+</div>
+
+<!-- ACTION BUTTONS -->
+<button onclick="generateMessage()" class="addbtn">Generate Message</button>
+<button onclick="copyMessage()" class="addbtn">Copy Message</button>
+<button class="addbtn" onclick="saveDeal()">Save Deal</button>
+<button class="addbtn" onclick="downloadExcel()">Download Excel</button>
+<button class="addbtn" onclick="openExcelPage()">View Table</button>
+<textarea id="output"></textarea>
+
+</div>
+
+<script>
+// ===== Data =====
+let dealTypes=[], freeItems=[], selectedFreeItems=[], showFreeActions=false;
+let allDeals = JSON.parse(localStorage.getItem("deals")) || [];
+
+// ===== LOAD =====
+window.onload = function() {
+  loadDealTypes();
+  loadFreeItems();
+}
+
+// ===== DEAL TYPES =====
+function toggleDealManager() { const box=document.getElementById("dealManager"); box.style.display = box.style.display==="none"?"block":"none"; }
+function loadDealTypes(){ const saved=localStorage.getItem("dealtypes"); dealTypes = saved ? JSON.parse(saved) : ["LOCAL CASH DEAL","FINANCE DEAL","EXPORT DEAL"]; renderDealTypes(); renderDropdownDealTypes(); }
+function saveDealTypes(){ localStorage.setItem("dealtypes", JSON.stringify(dealTypes)); renderDealTypes(); renderDropdownDealTypes(); }
+function renderDealTypes(){
+  const container=document.getElementById("dealTypeList"); container.innerHTML="<strong>Deal Types:</strong><ul></ul>";
+  const ul=container.querySelector("ul");
+  dealTypes.forEach((type,index)=>{
+    const li=document.createElement("li");
+    const span=document.createElement("span"); span.textContent=type;
+    const editBtn=document.createElement("button"); editBtn.textContent="✏️"; editBtn.className="edit";
+    editBtn.onclick=()=>{ const val=prompt("Edit Deal Type",type); if(val){ dealTypes[index]=val; saveDealTypes(); } };
+    const deleteBtn=document.createElement("button"); deleteBtn.textContent="❌"; deleteBtn.className="delete";
+    deleteBtn.onclick=()=>{ if(confirm("Delete Deal Type?")){ dealTypes.splice(index,1); saveDealTypes(); } };
+    li.appendChild(span); li.appendChild(editBtn); li.appendChild(deleteBtn);
+    ul.appendChild(li);
+  });
+  const addContainer=document.getElementById("addDealTypeContainer"); addContainer.innerHTML="";
+  const addBtn=document.createElement("button"); addBtn.textContent="Add New Deal Type"; addBtn.className="addbtn";
+  addBtn.onclick=()=>{ const val=prompt("Enter Deal Type"); if(val){ dealTypes.push(val); saveDealTypes(); } };
+  addContainer.appendChild(addBtn);
+}
+function renderDropdownDealTypes(){ const dropdown=document.getElementById("dealtype"); dropdown.innerHTML=""; dealTypes.forEach(type=>{ const option=document.createElement("option"); option.text=type; dropdown.add(option); }); }
+
+// ===== FREE ITEMS =====
+function loadFreeItems(){ 
+  const saved=localStorage.getItem("freeitems"); 
+  freeItems = saved ? JSON.parse(saved) : ["Nothing Free","With Free RTA Registration","With Free Tinting"];
+  renderDropdownFreeItems();
+}
+function toggleFreeActions(){ showFreeActions = !showFreeActions; renderSelectedFreeItems(); }
+function toggleAddNewFreeItem(){ const col=document.getElementById("addNewFreeItemColumn"); col.style.display = col.style.display==="none"?"flex":"none"; }
+function renderDropdownFreeItems(){ const dropdown=document.getElementById("freeitemdropdown"); dropdown.innerHTML=""; freeItems.forEach(item=>{ const option=document.createElement("option"); option.text=item; dropdown.add(option); }); }
+function addFreeItem(){ const val=document.getElementById("newfreeitem").value.trim(); if(!val) return; freeItems.push(val); document.getElementById("newfreeitem").value=""; renderDropdownFreeItems(); }
+function addSelectedFreeItem(){ const dropdown=document.getElementById("freeitemdropdown"); const val=dropdown.value; if(!val || selectedFreeItems.includes(val)) return; selectedFreeItems.push(val); renderSelectedFreeItems(); }
+function renderSelectedFreeItems(){
+  const container=document.getElementById("selectedFreeItems"); container.innerHTML="";
+  selectedFreeItems.forEach((item,index)=>{
+    const li=document.createElement("li");
+    const span=document.createElement("span"); span.textContent=item;
+    li.appendChild(span);
+    const delBtn=document.createElement("button"); delBtn.textContent="❌"; delBtn.className="delete";
+    delBtn.onclick=()=>{ selectedFreeItems.splice(index,1); renderSelectedFreeItems(); };
+    li.appendChild(delBtn);
+    if(showFreeActions){
+      const editBtn=document.createElement("button"); editBtn.textContent="✏️"; editBtn.className="edit";
+      editBtn.onclick=()=>{ const val=prompt("Edit Free Item",item); if(val){ selectedFreeItems[index]=val; renderSelectedFreeItems(); } };
+      li.appendChild(editBtn);
+    }
+    container.appendChild(li);
+  });
+}
+
+// ===== MESSAGE =====
+function generateMessage(){
+  const dealtype=document.getElementById("dealtype").value;
+  const customer=document.getElementById("customer").value;
+  const car=document.getElementById("car").value;
+  const color=document.getElementById("color").value;
+  const vin=document.getElementById("vin").value;
+  const pubprice=document.getElementById("pubprice").value;
+  const soldprice=document.getElementById("soldprice").value;
+  const warranty=document.getElementById("warranty").value;
+  const service=document.getElementById("service").value;
+  const phone=document.getElementById("phone").value;
+  const location=document.getElementById("location").value;
+  const dob=document.getElementById("dob").value;
+  const dealno=document.getElementById("dealno").value;
+  const additional=document.getElementById("additional").value;
+  const custom=document.getElementById("customfreeitems").value.trim();
+
+  let freeItemsText=selectedFreeItems.join(", ");
+  if(custom) freeItemsText+=(freeItemsText?", ":"")+custom;
+
+  const message=dealtype+"\n\n"+
+                customer+"\n\n"+
+                car+"\n"+color+"\n"+vin+"\n\n"+
+                "Published Price : "+pubprice+"\n"+
+                "Sold Price : "+soldprice+"\n"+
+                (freeItemsText?freeItemsText+"\n\n":"")+
+                warranty + "\n" +
+                (service ? service + "\n\n" : "")+
+                "Ph No : "+phone+"\n\n"+
+                location+"\n"+dob+"\n\n"+
+                "Deal No : "+dealno+"\n"+
+                (additional ? "Additional Details: "+additional+"\n" : "");
+  document.getElementById("output").value=message;
+}
+
+function copyMessage(){ const text=document.getElementById("output"); text.select(); navigator.clipboard.writeText(text.value); alert("Message Copied"); }
+
+// ===== SAVE DEAL =====
+function saveDeal(){
+    const deal = {
+        timestamp: new Date().toISOString(),
+        dealType: document.getElementById("dealtype").value,
+        customer: document.getElementById("customer").value,
+        car: document.getElementById("car").value,
+        color: document.getElementById("color").value,
+        vin: document.getElementById("vin").value,
+        pubprice: document.getElementById("pubprice").value,
+        soldprice: document.getElementById("soldprice").value,
+        freeItems: selectedFreeItems.join(", ") + (document.getElementById("customfreeitems").value ? ", " + document.getElementById("customfreeitems").value : ""),
+        warranty: document.getElementById("warranty").value,
+        service: document.getElementById("service").value,
+        lead: document.getElementById("lead").value,
+        source: document.getElementById("source").value,
+        salesman: document.getElementById("salesman").value,
+        phone: document.getElementById("phone").value,
+        location: document.getElementById("location").value,
+        dob: document.getElementById("dob").value,
+        dealNo: document.getElementById("dealno").value,
+        additional: document.getElementById("additional").value
+    };
+    allDeals.push(deal);
+    localStorage.setItem("deals", JSON.stringify(allDeals));
+    alert("Deal Saved!");
+}
+
+// ===== DOWNLOAD EXCEL =====
+function downloadExcel(){
+    if(allDeals.length === 0){ alert("No deals to download!"); return; }
+    const ws = XLSX.utils.json_to_sheet(allDeals);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Deals");
+    XLSX.writeFile(wb, "Deals.xlsx");
+}
+
+// ===== VIEW TABLE =====
+function openExcelPage(){
+    if(allDeals.length===0){ alert("No deals to view!"); return; }
+    const newWindow = window.open("", "_blank");
+
+    const thead = `<tr>
+      <th>Date</th>
+      <th>Number Of Days</th>
+      <th>Deal No</th>
+      <th>Customer Name</th>
+      <th>Car</th>
+      <th>Color</th>
+      <th>VIN</th>
+      <th>Sold Price</th>
+      <th>Warranty</th>
+      <th>Service</th>
+      <th>Published Price</th>
+      <th>Source</th>
+      <th>Salesman</th>
+      <th>Ph No</th>
+      <th>Location</th>
+      <th>DOB</th>
+      <th>Actions</th>
+    </tr>`;
+
+    const tbody = allDeals.map((deal,index)=>{
+      const dealDate = new Date(deal.timestamp);
+      const now = new Date();
+      const diffDays = Math.floor((now - dealDate)/(1000*60*60*24));
+      const daysClass = diffDays > 14 ? 'blink' : '';
+      return `<tr>
+        <td>${dealDate.toLocaleDateString()}</td>
+        <td class="${daysClass}">${diffDays}</td>
+        <td>${deal.dealNo}</td>
+        <td>${deal.customer}</td>
+        <td>${deal.car}</td>
+        <td>${deal.color}</td>
+        <td>${deal.vin}</td>
+        <td>${deal.soldprice}</td>
+        <td>${deal.warranty}</td>
+        <td>${deal.service}</td>
+        <td>${deal.pubprice}</td>
+        <td>${deal.source}</td>
+        <td>${deal.salesman}</td>
+        <td>${deal.phone}</td>
+        <td>${deal.location}</td>
+        <td>${deal.dob}</td>
+        <td>
+          <button onclick="if(confirm('Delete this deal?')){ window.opener.deleteDeal(${index}); this.closest('tr').remove(); }">Delete</button>
+          <button onclick="window.opener.editDeal(${index}); window.close();">Edit</button>
+        </td>
+      </tr>`;
+    }).join("");
+
+    newWindow.document.write(`
+      <html>
+      <head>
+        <title>Deal Table</title>
+        <style>
+          body{font-family:Arial;padding:20px;}
+          table{border-collapse:collapse;width:100%;}
+          th, td{border:1px solid #ccc;padding:8px;text-align:left;}
+          th{background:#25D366;color:white;}
+          tr:nth-child(even){background:#f2f2f2;}
+          button{padding:5px 10px;margin:2px; cursor:pointer;}
+          .blink{color:red;animation:blink 1s infinite;}
+          @keyframes blink{50%{opacity:0;}}
+        </style>
+      </head>
+      <body>
+        <h2>All Deals (Row Format)</h2>
+        <button onclick="window.close()">Exit</button>
+        <table>
+          ${thead}
+          ${tbody}
+        </table>
+      </body>
+      </html>
+    `);
+    newWindow.document.close();
+}
+
+// Function in main window to delete a deal
+function deleteDeal(index){
+    allDeals.splice(index,1);
+    localStorage.setItem("deals", JSON.stringify(allDeals));
+    alert("Deal deleted!");
+}
+
+// Function to edit a deal
+function editDeal(index){
+    const deal = allDeals[index];
+    document.getElementById("dealtype").value = deal.dealType;
+    document.getElementById("customer").value = deal.customer;
+    document.getElementById("car").value = deal.car;
+    document.getElementById("color").value = deal.color;
+    document.getElementById("vin").value = deal.vin;
+    document.getElementById("pubprice").value = deal.pubprice;
+    document.getElementById("soldprice").value = deal.soldprice;
+    selectedFreeItems = deal.freeItems.split(",").map(f=>f.trim());
+    renderSelectedFreeItems();
+    document.getElementById("warranty").value = deal.warranty;
+    document.getElementById("service").value = deal.service;
+    document.getElementById("lead").value = deal.lead;
+    document.getElementById("dealno").value = deal.dealNo;
+    document.getElementById("source").value = deal.source;
+    document.getElementById("salesman").value = deal.salesman;
+    document.getElementById("phone").value = deal.phone;
+    document.getElementById("location").value = deal.location;
+    document.getElementById("dob").value = deal.dob;
+    document.getElementById("additional").value = deal.additional;
+
+    // Remove the old deal after loading it for editing
+    allDeals.splice(index,1);
+    localStorage.setItem("deals", JSON.stringify(allDeals));
+    alert("Edit the deal and click Save Deal to update!");
+}
+</script>
+
+</body>
+</html>
